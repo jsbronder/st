@@ -14,6 +14,7 @@
 #include <X11/keysym.h>
 #include <X11/Xft/Xft.h>
 #include <X11/XKBlib.h>
+#include <X11/extensions/Xrandr.h>
 
 static char *argv0;
 #include "arg.h"
@@ -155,6 +156,7 @@ static void xsetenv(void);
 static void xseturgency(int);
 static int evcol(XEvent *);
 static int evrow(XEvent *);
+static float dpiscale();
 
 static void expose(XEvent *);
 static void visibility(XEvent *);
@@ -307,7 +309,7 @@ zoomreset(const Arg *arg)
 	Arg larg;
 
 	if (defaultfontsize > 0) {
-		larg.f = defaultfontsize;
+		larg.f = defaultfontsize * dpiscale();
 		zoomabs(&larg);
 	}
 }
@@ -326,6 +328,62 @@ evrow(XEvent *e)
 	int y = e->xbutton.y - borderpx;
 	LIMIT(y, 0, win.th - 1);
 	return y / win.ch;
+}
+
+float dpiscale()
+{
+	int x = xw.l;
+	int y = xw.t;
+	Window root_win = XRootWindow(xw.dpy, xw.scr);
+	Screen * screen = DefaultScreenOfDisplay(xw.dpy);
+
+	XRRScreenResources *xrr_res = XRRGetScreenResources(xw.dpy, root_win);
+	RROutput primary = XRRGetOutputPrimary(xw.dpy, root_win);
+
+	int ref_dpi = HeightOfScreen(screen) * 25.4 / HeightMMOfScreen(screen);
+	int dpi = -1;
+	int primary_dpi = -1;
+	for (int i = 0; i < xrr_res->noutput; ++i) {
+		XRROutputInfo *rro = XRRGetOutputInfo(xw.dpy, xrr_res, xrr_res->outputs[i]);
+
+		if (rro->connection != RR_Connected) {
+		    XRRFreeOutputInfo(rro);
+			continue;
+        }
+
+		if (!rro->crtc) {
+		    XRRFreeOutputInfo(rro);
+            continue;
+        }
+
+		XRRCrtcInfo *rrc = XRRGetCrtcInfo(xw.dpy, xrr_res, rro->crtc);
+		int rotated = (rrc->rotation & RR_Rotate_90) || (rrc->rotation & RR_Rotate_270);
+		unsigned long h_mm = rotated ? rro->mm_width : rro->mm_height;
+
+		if (x >= rrc->x && x < rrc->x + rrc->width && y >= rrc->y && y < rrc->height) {
+			dpi = rrc->height * 25.4 / h_mm;
+		}
+
+		if (xrr_res->outputs[i] == primary) {
+			primary_dpi = rrc->height * 25.4 / h_mm;
+		}
+
+		XRRFreeCrtcInfo(rrc);
+		XRRFreeOutputInfo(rro);
+
+		if (primary_dpi > -1 && dpi > -1) {
+			break;
+        }
+	}
+
+	XRRFreeScreenResources(xrr_res);
+
+	if (dpi == -1 || primary_dpi == -1)
+		return 1;
+
+	float ref_scale = ref_dpi / 96.0f;
+	float r = (float)(ref_scale * dpi) / primary_dpi;
+	return r;
 }
 
 void
@@ -1789,6 +1847,21 @@ resize(XEvent *e)
 	if (e->xconfigure.width == win.w && e->xconfigure.height == win.h)
 		return;
 
+	if (e->xconfigure.x != xw.l || e->xconfigure.y != xw.t) {
+		/* l and t are only used post-initialization as XSizeHints, but according to
+		 * XSizeHints(3), they're getting ignored.  So, keep them updated with the
+		 * current position.  Then, if the position has changed we can re-check the
+		 * dpi of the current screen.
+		 *
+		 * There are better ways, but this seems sufficient for a patch that'll have
+		 * to keep getting rebased ontop of upstream.
+		 */
+		xw.l = e->xconfigure.x;
+		xw.t = e->xconfigure.y;
+		xunloadfonts();
+		xloadfonts(usedfont, defaultfontsize * dpiscale());
+	}
+
 	cresize(e->xconfigure.width, e->xconfigure.height);
 }
 
@@ -1816,9 +1889,12 @@ run(void)
 		if (ev.type == ConfigureNotify) {
 			w = ev.xconfigure.width;
 			h = ev.xconfigure.height;
+			xw.l = ev.xconfigure.x;
+			xw.t = ev.xconfigure.y;
 		}
 	} while (ev.type != MapNotify);
 
+	xloadfonts(usedfont, defaultfontsize * dpiscale());
 	ttyfd = ttynew(opt_line, shell, opt_io, opt_cmd);
 	cresize(w, h);
 
