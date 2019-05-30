@@ -1245,8 +1245,8 @@ xmakeglyphfontspecs(XftGlyphFontSpec *specs, const Glyph *glyphs, int len, int x
 				font = &dc.ifont;
 				frcflags = FRC_ITALIC;
 			} else if (mode & ATTR_BOLD) {
-				font = &dc.bfont;
-				frcflags = FRC_BOLD;
+				//font = &dc.bfont;
+				//frcflags = FRC_BOLD;
 			}
 			yp = winy + font->ascent;
 		}
