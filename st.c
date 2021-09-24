@@ -2879,7 +2879,7 @@ int trt_kbdselect(KeySym ksym, char *buf, int len) {
             if ( ksym == XK_Escape )    ptarget = 0;
 			return 0;
 		}
-        else if ( ksym == XK_BackSpace ) {
+        else if (ksym == XK_BackSpace || ksym == XK_0) {
             if ( !ptarget )     return 0;
             term.line[term.bot][ptarget--].u = ' ';
 		}
@@ -2909,6 +2909,7 @@ int trt_kbdselect(KeySym ksym, char *buf, int len) {
         set_notifmode(0, ksym);
         return MODE_KBDSELECT;
     case XK_s :
+    case XK_v :
         if ( selectsearch_mode & 1 )
             selclear();
         else
@@ -2932,6 +2933,7 @@ int trt_kbdselect(KeySym ksym, char *buf, int len) {
         if ( !in_use )  break;
         selclear();
     case XK_Return :
+    case XK_y:
         set_notifmode(4, ksym);
         term.c.x = cu.x, term.c.y = cu.y;
         select_or_drawcursor(selectsearch_mode = 0, type);
@@ -2943,6 +2945,7 @@ int trt_kbdselect(KeySym ksym, char *buf, int len) {
             search(selectsearch_mode, &target[0], ptarget, (ksym == XK_n) ? -1 : 1, type, &cu);
         break;
     case XK_BackSpace :
+    case XK_0 :
         term.c.x = 0;
         select_or_drawcursor(selectsearch_mode, type);
         break;
